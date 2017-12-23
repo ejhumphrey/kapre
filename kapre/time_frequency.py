@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import
 import numpy as np
-import keras
+
 from keras import backend as K
 from keras.engine import Layer
 from keras.utils.conv_utils import conv_output_length
+
 from . import backend, backend_keras
 
 
@@ -14,8 +15,10 @@ class Spectrogram(Layer):
 
     ```python
     kapre.time_frequency.Spectrogram(n_dft=512, n_hop=None, padding='same',
-                                     power_spectrogram=2.0, return_decibel_spectrogram=False,
-                                     trainable_kernel=False, image_data_format='default',
+                                     power_spectrogram=2.0,
+                                     return_decibel_spectrogram=False,
+                                     trainable_kernel=False,
+                                     image_data_format='default',
                                      **kwargs)
     ```
     Spectrogram layer that outputs spectrogram(s) in 2D image format.
@@ -34,18 +37,21 @@ class Spectrogram(Layer):
        - Default: ``'same'``
 
      * power_spectrogram: float [scalar],
-       -  ``2.0`` to get power-spectrogram, ``1.0`` to get amplitude-spectrogram.
+       -  ``2.0`` to get power-spectrogram, ``1.0`` to get
+          amplitude-spectrogram.
        -  Usually ``1.0`` or ``2.0``.
        -  Default: ``2.0``
 
      * return_decibel_spectrogram: bool,
-       -  Whether to return in decibel or not, i.e. returns log10(amplitude spectrogram) if ``True``.
+       -  Whether to return in decibel or not, i.e. returns
+          log10(amplitude spectrogram) if ``True``.
        -  Recommended to use ``True``, although it's not by default.
        -  Default: ``False``
 
      * trainable_kernel: bool
        -  Whether the kernels are trainable or not.
-       -  If ``True``, Kernels are initialised with DFT kernels and then trained.
+       -  If ``True``, Kernels are initialised with DFT kernels and then
+          trained.
        -  Default: ``False``
 
      * image_data_format: string, ``'channels_first'`` or ``'channels_last'``.
@@ -57,7 +63,8 @@ class Spectrogram(Layer):
     #### Notes
      * The input should be a 2D array, ``(audio_channel, audio_length)``.
      * E.g., ``(1, 44100)`` for mono signal, ``(2, 44100)`` for stereo signal.
-     * It supports multichannel signal input, so ``audio_channel`` can be any positive integer.
+     * It supports multichannel signal input, so ``audio_channel`` can be any
+       positive integer.
 
     #### Returns
 
@@ -72,7 +79,9 @@ class Spectrogram(Layer):
 
     def __init__(self, n_dft=512, n_hop=None, padding='same',
                  power_spectrogram=2.0, return_decibel_spectrogram=False,
-                 trainable_kernel=False, image_data_format='default', **kwargs):
+                 trainable_kernel=False, image_data_format='default',
+                 **kwargs):
+        # TODO: Swap asserts for ValueErrors
         assert n_dft > 1 and ((n_dft & (n_dft - 1)) == 0), \
             ('n_dft should be > 1 and power of 2, but n_dft == %d' % n_dft)
         assert isinstance(trainable_kernel, bool)
@@ -81,7 +90,8 @@ class Spectrogram(Layer):
         if n_hop is None:
             n_hop = n_dft // 2
 
-        assert image_data_format in ('default', 'channels_first', 'channels_last')
+        assert image_data_format in ('default', 'channels_first',
+                                     'channels_last')
         if image_data_format == 'default':
             self.image_data_format = K.image_data_format()
         else:
@@ -106,6 +116,7 @@ class Spectrogram(Layer):
         else:
             self.ch_axis_idx = 3
         if self.len_src is not None:
+            # TODO: Raise ValueError
             assert self.len_src >= self.n_dft, 'Hey! The input is too short!'
 
         self.n_frame = conv_output_length(self.len_src,
@@ -113,9 +124,12 @@ class Spectrogram(Layer):
                                           self.padding,
                                           self.n_hop)
 
-        dft_real_kernels, dft_imag_kernels = backend.get_stft_kernels(self.n_dft)
-        self.dft_real_kernels = K.variable(dft_real_kernels, dtype=K.floatx(), name="real_kernels")
-        self.dft_imag_kernels = K.variable(dft_imag_kernels, dtype=K.floatx(), name="imag_kernels")
+        (dft_real_kernels,
+            dft_imag_kernels) = backend.get_stft_kernels(self.n_dft)
+        self.dft_real_kernels = K.variable(dft_real_kernels, dtype=K.floatx(),
+                                           name="real_kernels")
+        self.dft_imag_kernels = K.variable(dft_imag_kernels, dtype=K.floatx(),
+                                           name="imag_kernels")
         # kernels shapes: (filter_length, 1, input_dim, nb_filter)?
         if self.trainable_kernel:
             self.trainable_weights.append(self.dft_real_kernels)
@@ -125,7 +139,7 @@ class Spectrogram(Layer):
             self.non_trainable_weights.append(self.dft_imag_kernels)
 
         super(Spectrogram, self).build(input_shape)
-        # self.built = True
+        # self.built = True  # TODO: Should this be un-commented?
 
     def compute_output_shape(self, input_shape):
         if self.image_data_format == 'channels_first':
@@ -137,9 +151,10 @@ class Spectrogram(Layer):
         output = self._spectrogram_mono(x[:, 0:1, :])
         if self.is_mono is False:
             for ch_idx in range(1, self.n_ch):
-                output = K.concatenate((output,
-                                        self._spectrogram_mono(x[:, ch_idx:ch_idx + 1, :])),
-                                       axis=self.ch_axis_idx)
+                output = K.concatenate(
+                    (output,
+                     self._spectrogram_mono(x[:, ch_idx:ch_idx + 1, :])),
+                    axis=self.ch_axis_idx)
         if self.power_spectrogram != 2.0:
             output = K.pow(K.sqrt(output), self.power_spectrogram)
         if self.return_decibel_spectrogram:
@@ -147,13 +162,14 @@ class Spectrogram(Layer):
         return output
 
     def get_config(self):
-        config = {'n_dft': self.n_dft,
-                  'n_hop': self.n_hop,
-                  'padding': self.padding,
-                  'power_spectrogram': self.power_spectrogram,
-                  'return_decibel_spectrogram': self.return_decibel_spectrogram,
-                  'trainable_kernel': self.trainable_kernel,
-                  'image_data_format': self.image_data_format}
+        config = {
+            'n_dft': self.n_dft,
+            'n_hop': self.n_hop,
+            'padding': self.padding,
+            'power_spectrogram': self.power_spectrogram,
+            'return_decibel_spectrogram': self.return_decibel_spectrogram,
+            'trainable_kernel': self.trainable_kernel,
+            'image_data_format': self.image_data_format}
         base_config = super(Spectrogram, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
@@ -184,8 +200,9 @@ class Melspectrogram(Spectrogram):
     '''
     ### `Melspectrogram`
     ```python
-    kapre.time_frequency.Melspectrogram(sr=22050, n_mels=128, fmin=0.0, fmax=None,
-                                        power_melgram=1.0, return_decibel_melgram=False,
+    kapre.time_frequency.Melspectrogram(sr=22050, n_mels=128, fmin=0.0,
+                                        fmax=None, power_melgram=1.0,
+                                        return_decibel_melgram=False,
                                         trainable_fb=False, **kwargs)
     ```
 
@@ -220,13 +237,15 @@ class Melspectrogram(Spectrogram):
        - Default: ``1.0``
 
      * return_decibel_melgram: bool
-       - Whether to return in decibel or not, i.e. returns log10(amplitude spectrogram) if ``True``.
+       - Whether to return in decibel or not, i.e. returns
+         log10(amplitude spectrogram) if ``True``.
        - Recommended to use ``True``, although it's not by default.
        - Default: ``False``
 
      * trainable_fb: bool
        - Whether the spectrogram -> mel-spectrogram filterbanks are trainable.
-       - If ``True``, the frequency-to-mel matrix is initialised with mel frequencies but trainable.
+       - If ``True``, the frequency-to-mel matrix is initialised with mel
+         frequencies but trainable.
        - If ``False``, it is initialised and then frozen.
        - Default: `False`
 
@@ -237,7 +256,8 @@ class Melspectrogram(Spectrogram):
     #### Notes
      * The input should be a 2D array, ``(audio_channel, audio_length)``.
     E.g., ``(1, 44100)`` for mono signal, ``(2, 44100)`` for stereo signal.
-     * It supports multichannel signal input, so ``audio_channel`` can be any positive integer.
+     * It supports multichannel signal input, so ``audio_channel`` can be any
+       positive integer.
 
     #### Returns
 
@@ -275,8 +295,9 @@ class Melspectrogram(Spectrogram):
     def build(self, input_shape):
         super(Melspectrogram, self).build(input_shape)
         self.built = False
-        # compute freq2mel matrix --> 
-        mel_basis = backend.mel(self.sr, self.n_dft, self.n_mels, self.fmin, self.fmax)  # (128, 1025) (mel_bin, n_freq)
+        # compute freq2mel matrix -->
+        mel_basis = backend.mel(self.sr, self.n_dft, self.n_mels,
+                                self.fmin, self.fmax)
         mel_basis = np.transpose(mel_basis)
 
         self.freq2mel = K.variable(mel_basis, dtype=K.floatx())
@@ -297,9 +318,11 @@ class Melspectrogram(Spectrogram):
         # now,  th: (batch_sample, n_ch, n_freq, n_time)
         #       tf: (batch_sample, n_freq, n_time, n_ch)
         if self.image_data_format == 'channels_first':
-            power_spectrogram = K.permute_dimensions(power_spectrogram, [0, 1, 3, 2])
+            power_spectrogram = K.permute_dimensions(power_spectrogram,
+                                                     [0, 1, 3, 2])
         else:
-            power_spectrogram = K.permute_dimensions(power_spectrogram, [0, 3, 2, 1])
+            power_spectrogram = K.permute_dimensions(power_spectrogram,
+                                                     [0, 3, 2, 1])
         # now, whatever image_data_format, (batch_sample, n_ch, n_time, n_freq)
         output = K.dot(power_spectrogram, self.freq2mel)
         if self.image_data_format == 'channels_first':
